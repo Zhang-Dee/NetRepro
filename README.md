@@ -1,13 +1,12 @@
 # NetRepro
 
-NetRepro is an unsupervised graph learning framework for cross-domain drug repurposing using gene co-expression networks from tissues and cell lines.
+NetRepro is a graph-based framework for cross-domain drug repurposing from transcriptomic data. It learns shared network representations across tissue and cell-line domains, then prioritizes compounds by how strongly their perturbation vectors reverse the disease state.
 
-This repository is organized as a release-ready companion codebase for the manuscript. It includes:
+This repository contains the manuscript companion implementation of:
 
-- the main NetRepro backbone for shared and domain-specific graph representation learning
-- perturbation reversion scoring for drug prioritization
-- the chemistry-based zero-shot extension adapted from the original research prototype
-- runnable CLI scripts for training, scoring, DMSO centroid export, demo-data generation, and chemistry fine-tuning
+- the NetRepro backbone model
+- perturbation reversion scoring
+- the chemistry-based zero-shot extension
 
 ## License
 
@@ -15,7 +14,7 @@ This project is released under the [MIT License](LICENSE).
 
 ## Installation
 
-Create a Python environment with the dependencies in `requirements.txt`.
+Create a Python environment and install the dependencies:
 
 ```bash
 pip install -r requirements.txt
@@ -24,42 +23,43 @@ pip install -r requirements.txt
 Notes:
 
 - `PyWGCNA` is optional and is only required when `--graph-method wgcna` is used.
-- The chemistry extension expects precomputed molecular fingerprints. RDKit is not required at runtime if fingerprints are already prepared.
+- The chemistry extension expects precomputed molecular fingerprints.
 
-## Input matrices
+## Input format
 
-Each expression table should be a CSV file with gene identifiers in the first column.
+Expression matrices should be stored as CSV files with gene identifiers in the first column.
 
 Supported layouts:
 
 - `genes x samples`
 - `samples x genes`
 
-All scripts default to `--matrix-layout auto` and attempt to infer orientation from labels and matrix shape. If your files are unusual, pass one of these explicitly:
+All CLI scripts support:
 
+- `--matrix-layout auto`
 - `--matrix-layout genes_by_samples`
 - `--matrix-layout samples_by_genes`
 
 ## Repository structure
 
-- `netrepro.model`, `netrepro.losses`, `netrepro.train`, and `netrepro.scoring`: main NetRepro training and ranking workflow
+- `netrepro.model`, `netrepro.losses`, `netrepro.train`, `netrepro.scoring`: backbone training and scoring
 - `netrepro.chem`: chemistry-based zero-shot extension
-- `netrepro.io` and `netrepro.datasets`: transcriptomic matrix loading and treated-compound dataset utilities
-- `scripts/train_netrepro.py`: train the backbone model
-- `scripts/score_netrepro.py`: compute the NetRepro reversion score
-- `scripts/export_dmso_centroid.py`: export DMSO node centroids for the chemistry extension
-- `scripts/finetune_chem_netrepro.py`: fine-tune the chemistry extension
-- `scripts/make_demo_data.py`: generate a small synthetic demo dataset
+- `netrepro.io`, `netrepro.datasets`: matrix loading and treated-compound dataset utilities
+- `scripts/train_netrepro.py`: backbone training
+- `scripts/score_netrepro.py`: reversion score calculation
+- `scripts/export_dmso_centroid.py`: DMSO centroid export for chemistry fine-tuning
+- `scripts/finetune_chem_netrepro.py`: chemistry extension fine-tuning
+- `scripts/make_demo_data.py`: synthetic quick-start dataset generation
 
-## Quick demo
+## Quick start
 
-Users without access to the original data can still verify that the pipeline runs end to end by generating a small synthetic dataset:
+Generate a small synthetic dataset:
 
 ```bash
 python scripts/make_demo_data.py --output-dir demo_data
 ```
 
-Then train a small demo model:
+Train a small model:
 
 ```bash
 python scripts/train_netrepro.py \
@@ -98,7 +98,7 @@ python scripts/score_netrepro.py \
 
 ## Backbone training
 
-Train the main NetRepro backbone on transcriptomic matrices from:
+Train the main NetRepro model from:
 
 - healthy tissue
 - cancer tissue
@@ -126,15 +126,16 @@ python scripts/train_netrepro.py \
 
 ## Reversion score
 
-After training, the manuscript's core prioritization logic is exposed through `scripts/score_netrepro.py` and `netrepro.compute_reversion_score(...)`.
-
-This computes:
+After training, NetRepro prioritizes compounds from the relationship between:
 
 - disease perturbation = `cancer - healthy`
 - drug perturbation = `treated - dmso`
+
+The provided score is:
+
 - `reversion_score = -cosine_similarity(disease_perturbation, drug_perturbation)`
 
-Higher `reversion_score` means stronger predicted reversal.
+Higher `reversion_score` indicates stronger predicted reversal.
 
 ## Zero-shot chemistry workflow
 
@@ -148,7 +149,7 @@ python scripts/export_dmso_centroid.py \
   --output-dir outputs/dmso_centroids
 ```
 
-3. Fine-tune the chemistry extension from treated transcriptomic profiles and a fingerprint table:
+3. Fine-tune the chemistry extension:
 
 ```bash
 python scripts/finetune_chem_netrepro.py \
@@ -159,20 +160,3 @@ python scripts/finetune_chem_netrepro.py \
   --dmso-specific-centroid outputs/dmso_centroids/dmso_specific_node_centroid.csv \
   --save-path checkpoints/netrepro_chem_best.pt
 ```
-
-## About demo data vs real data
-
-Without the original study data, users cannot reproduce the manuscript's biological results directly.
-
-However, a demo dataset is still useful because it lets users:
-
-- verify installation
-- test CLI usage
-- understand required file formats
-- confirm that training, scoring, and centroid export work before switching to real data
-
-That is why this release includes a demo-data generator rather than bundling private or large real datasets.
-
-## Implementation notes
-
-This repository provides the manuscript-oriented implementation of NetRepro, including the backbone model, perturbation reversion scoring, and the chemistry-based zero-shot extension.
