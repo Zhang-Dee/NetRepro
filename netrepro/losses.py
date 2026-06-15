@@ -30,6 +30,9 @@ class GraphReconstructionLoss(nn.Module):
         num_nodes: int,
     ) -> torch.Tensor:
         num_pos = positive_edge_index.size(1)
+        if num_pos == 0:
+            return node_embeddings.new_tensor(0.0)
+
         num_neg = max(1, int(num_pos * self.num_negative_ratio))
 
         negative_edge_index = negative_sampling(

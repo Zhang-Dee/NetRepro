@@ -2,25 +2,21 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+import sys
 
-import pandas as pd
 import torch
 from torch_geometric.loader import DataLoader
 
+# Make the repo root importable when this file is run as a script.
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
 from netrepro.data import GraphBuildConfig, PairedGraphDataset
+from netrepro.io import align_gene_space, load_expression_matrix
 from netrepro.losses import GraphReconstructionLoss, GraphTripletLoss
-from netrepro.models import ModelConfig, NetRepro
+from netrepro.model import ModelConfig, NetRepro
 from netrepro.train import TrainingConfig, fit
-
-
-def load_expression_table(path: str) -> pd.DataFrame:
-    """
-    Expected format:
-    rows = genes
-    columns = samples
-    index_col = 0
-    """
-    return pd.read_csv(path, index_col=0)
 
 
 def build_loaders(args):
@@ -31,10 +27,30 @@ def build_loaders(args):
         wgcna_power=args.wgcna_power,
         scale_each_matrix=args.scale_each_matrix,
     )
+    load_results = [
+        load_expression_matrix(args.tissue_normal_train, layout=args.matrix_layout, sep=args.sep),
+        load_expression_matrix(args.tissue_cancer_train, layout=args.matrix_layout, sep=args.sep),
+        load_expression_matrix(args.cell_dmso_train, layout=args.matrix_layout, sep=args.sep),
+        load_expression_matrix(args.cell_treated_train, layout=args.matrix_layout, sep=args.sep),
+        load_expression_matrix(args.tissue_normal_val, layout=args.matrix_layout, sep=args.sep),
+        load_expression_matrix(args.tissue_cancer_val, layout=args.matrix_layout, sep=args.sep),
+        load_expression_matrix(args.cell_dmso_val, layout=args.matrix_layout, sep=args.sep),
+        load_expression_matrix(args.cell_treated_val, layout=args.matrix_layout, sep=args.sep),
+    ]
+    (
+        tissue_normal_train,
+        tissue_cancer_train,
+        cell_dmso_train,
+        cell_treated_train,
+        tissue_normal_val,
+        tissue_cancer_val,
+        cell_dmso_val,
+        cell_treated_val,
+    ) = align_gene_space(*(result.matrix for result in load_results))
 
     tissue_train = PairedGraphDataset(
-        df_a=load_expression_table(args.tissue_normal_train),
-        df_b=load_expression_table(args.tissue_cancer_train),
+        df_a=tissue_normal_train,
+        df_b=tissue_cancer_train,
         domain_label=0,
         num_graphs=args.num_graphs_train,
         group_size=20,
@@ -44,8 +60,8 @@ def build_loaders(args):
     )
 
     cell_train = PairedGraphDataset(
-        df_a=load_expression_table(args.cell_dmso_train),
-        df_b=load_expression_table(args.cell_treated_train),
+        df_a=cell_dmso_train,
+        df_b=cell_treated_train,
         domain_label=1,
         num_graphs=args.num_graphs_train,
         group_size=20,
@@ -55,8 +71,8 @@ def build_loaders(args):
     )
 
     tissue_val = PairedGraphDataset(
-        df_a=load_expression_table(args.tissue_normal_val),
-        df_b=load_expression_table(args.tissue_cancer_val),
+        df_a=tissue_normal_val,
+        df_b=tissue_cancer_val,
         domain_label=0,
         num_graphs=args.num_graphs_val,
         group_size=20,
@@ -66,8 +82,8 @@ def build_loaders(args):
     )
 
     cell_val = PairedGraphDataset(
-        df_a=load_expression_table(args.cell_dmso_val),
-        df_b=load_expression_table(args.cell_treated_val),
+        df_a=cell_dmso_val,
+        df_b=cell_treated_val,
         domain_label=1,
         num_graphs=args.num_graphs_val,
         group_size=20,
@@ -97,6 +113,8 @@ def main():
     parser.add_argument("--cell-treated-val", type=str, required=True)
 
     parser.add_argument("--save-path", type=str, default="checkpoints/netrepro_best.pt")
+    parser.add_argument("--matrix-layout", type=str, choices=["auto", "genes_by_samples", "samples_by_genes"], default="auto")
+    parser.add_argument("--sep", type=str, default=",")
     parser.add_argument("--graph-method", type=str, choices=["correlation", "wgcna"], default="correlation")
     parser.add_argument("--wgcna-type", type=str, choices=["unsigned", "signed"], default="unsigned")
     parser.add_argument("--wgcna-power", type=int, default=6)

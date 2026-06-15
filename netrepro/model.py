@@ -50,34 +50,29 @@ class GNNEncoder(nn.Module):
         self.gnn_type = gnn_type
         self.num_layers = num_layers
 
-        hidden_dims = [input_dim]
         if num_layers == 1:
-            hidden_dims.append(output_dim)
+            layer_out_dims = [output_dim]
         elif num_layers == 2:
-            hidden_dims.extend([64, output_dim])
+            layer_out_dims = [64, output_dim]
         else:
-            hidden_dims.extend([64, 48, output_dim])
+            layer_out_dims = [64, 48] + [output_dim] * (num_layers - 2)
 
-        for i in range(num_layers):
-            in_dim = hidden_dims[i]
-            out_dim = hidden_dims[i + 1]
-
+        current_dim = input_dim
+        for i, out_dim in enumerate(layer_out_dims):
             if gnn_type == "gat":
                 is_last = i == num_layers - 1
                 heads = 1 if is_last else gat_heads
-                conv = GATConv(in_dim, out_dim, heads=heads, concat=True)
-                norm_dim = out_dim * heads
+                concat = not is_last
+                conv = GATConv(current_dim, out_dim, heads=heads, concat=concat)
+                current_dim = out_dim * heads if concat else out_dim
+                norm_dim = current_dim
             else:
-                conv = GCNConv(in_dim, out_dim)
+                conv = GCNConv(current_dim, out_dim)
+                current_dim = out_dim
                 norm_dim = out_dim
 
             self.layers.append(conv)
             self.norms.append(nn.BatchNorm1d(norm_dim))
-
-        self.final_proj = None
-        if gnn_type == "gat" and num_layers >= 1:
-            final_out_dim = hidden_dims[-1]
-            self.final_proj = nn.Linear(final_out_dim, output_dim)
 
     def forward(self, data: Data) -> torch.Tensor:
         x, edge_index = data.x, data.edge_index
@@ -88,9 +83,6 @@ class GNNEncoder(nn.Module):
             if i < len(self.layers) - 1:
                 x = torch.nn.functional.elu(x) if self.gnn_type == "gat" else torch.relu(x)
                 x = self.dropout(x)
-
-        if self.final_proj is not None and x.size(-1) != self.final_proj.out_features:
-            x = self.final_proj(x)
         return x
 
 

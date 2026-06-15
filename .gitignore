@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Training and inference artifacts
+checkpoints/
+outputs/
+demo_data/
+*.pt
+*.pth
+
+# OS/editor noise
+.DS_Store
+Thumbs.db

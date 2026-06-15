@@ -13,7 +13,10 @@ from sklearn.preprocessing import StandardScaler
 from torch.utils.data import Dataset
 from torch_geometric.data import Data
 
-import PyWGCNA
+try:
+    import PyWGCNA
+except ImportError:  # pragma: no cover - exercised only when optional dep is absent
+    PyWGCNA = None
 
 
 GraphMethod = Literal["correlation", "wgcna"]
@@ -23,6 +26,21 @@ def set_random_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
+
+
+def build_correlation_edge_index(
+    sample_by_gene: pd.DataFrame,
+    edge_threshold: float,
+) -> torch.Tensor:
+    corr = sample_by_gene.corr()
+    signed_binary = (np.abs(corr.values) > edge_threshold).astype(np.float32)
+    np.fill_diagonal(signed_binary, 0.0)
+
+    graph = nx.from_numpy_array(signed_binary)
+    adj = nx.to_scipy_sparse_array(graph, format="coo")
+    row = torch.from_numpy(adj.row).long()
+    col = torch.from_numpy(adj.col).long()
+    return torch.stack([row, col], dim=0)
 
 
 @dataclass
@@ -89,11 +107,22 @@ class PairedGraphDataset(Dataset):
 
         groups: List[List[int]] = []
         column_ids = list(range(total_columns))
+        max_attempts = max(1000, self.num_graphs * 50)
+        attempts = 0
 
-        while len(groups) < self.num_graphs:
+        while len(groups) < self.num_graphs and attempts < max_attempts:
+            attempts += 1
             current = set(random.sample(column_ids, self.group_size))
             if all(len(current.intersection(prev)) <= max_overlap for prev in groups):
                 groups.append(list(current))
+
+        if len(groups) < self.num_graphs:
+            raise ValueError(
+                "Unable to sample the requested number of graph groups under the current "
+                f"overlap constraint. Built {len(groups)} groups after {attempts} attempts; "
+                "consider reducing num_graphs, increasing available samples, or relaxing "
+                "max_repeats."
+            )
 
         return groups
 
@@ -128,17 +157,17 @@ class PairedGraphDataset(Dataset):
         return self._build_correlation_graph(sample_by_gene)
 
     def _build_correlation_graph(self, sample_by_gene: pd.DataFrame) -> torch.Tensor:
-        corr = sample_by_gene.corr()
-        signed_binary = (np.abs(corr.values) > self.config.edge_threshold).astype(np.float32)
-        np.fill_diagonal(signed_binary, 0.0)
-
-        graph = nx.from_numpy_array(signed_binary)
-        adj = nx.to_scipy_sparse_array(graph, format="coo")
-        row = torch.from_numpy(adj.row).long()
-        col = torch.from_numpy(adj.col).long()
-        return torch.stack([row, col], dim=0)
+        return build_correlation_edge_index(
+            sample_by_gene,
+            edge_threshold=self.config.edge_threshold,
+        )
 
     def _build_wgcna_graph(self, sample_by_gene: pd.DataFrame) -> torch.Tensor:
+        if PyWGCNA is None:
+            raise ImportError(
+                "PyWGCNA is required only when graph_method='wgcna'. "
+                "Install it or switch to graph_method='correlation'."
+            )
         wgcna = PyWGCNA.WGCNA(name="netrepro_graph", geneExp=sample_by_gene)
         expr = wgcna.geneExpr.to_df().T
 
