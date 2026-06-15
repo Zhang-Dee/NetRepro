@@ -173,11 +173,6 @@ However, a demo dataset is still useful because it lets users:
 
 That is why this release includes a demo-data generator rather than bundling private or large real datasets.
 
-## Alignment with the original research code
+## Implementation notes
 
-The repository reflects two layers of the project:
-
-- the cleaned manuscript-aligned implementation in `netrepro.*`
-- the chemistry-based zero-shot extension distilled from the original prototype
-
-One cleanup is intentional: the older prototype used expression-matrix reconstruction with `MSELoss`, while the manuscript describes graph-topology reconstruction. This release keeps graph reconstruction as the canonical implementation because it better matches the paper.
+This repository provides the manuscript-oriented implementation of NetRepro, including the backbone model, perturbation reversion scoring, and the chemistry-based zero-shot extension.
